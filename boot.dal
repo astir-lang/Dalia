@@ -1,8 +1,3 @@
-// Enums are super simple!
-d'Option :: Some(a) | Empty
+take_int_and_add_2\ x int :: int → x + 2
 
-return_float\ x int :: float → Some(2.32)
-
-// Who is whatever and why are we doing them...?
-
-do_whatever\ :: (float, int) → (3.32, 54) 
+_start\ :: int → take_int_and_add_2 2
