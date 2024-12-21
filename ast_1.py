@@ -239,6 +239,7 @@ class Parser(Cursor):
                 break
             self.results.append(parsed)
             self.current_number_of_advances = 0
+            self.using_st = 0
 
     def parse(self) -> AstirExpr | None:
         c = self.current()
@@ -363,6 +364,7 @@ class Parser(Cursor):
             # then match arguments with arguments.
         elif c.ty == TT.BACKSLASH:
             self.advance()
+            previous_symbol_table_id = self.using_st
             symbol_table_id = list(self.symbol_tables.items())[-1][0] + 1
             lambda_symbol_table = SymbolTable(symbol_table_id, 0)
             self.symbol_tables[symbol_table_id] = lambda_symbol_table
@@ -400,9 +402,8 @@ class Parser(Cursor):
             popped = self.results.pop()
             if not isinstance(popped, Identifier):
                 return popped
-            self.using_st = 0
-            symbol_table = self.symbol_tables[self.using_st]
-            _lambda = Lambda(lambda_symbol_table, body, symbol_table.last_id + 1)
+            symbol_table = self.symbol_tables[previous_symbol_table_id]
+            _lambda = Lambda(lambda_symbol_table, body, previous_symbol_table_id, symbol_table.usable_id)
             symbol_table.insert(popped.value, _lambda)
             result = Assignment(
                 popped,

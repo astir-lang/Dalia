@@ -39,7 +39,7 @@ class SymbolTable:
     def __init__(self, id: int, parent: int | None = None) -> None:
         self.symbols: dict[int, Symbol] = {}
         self.name_to_id: dict[str, int] = {}
-        self.last_id = 0
+        self.usable_id = 0
         self.id = id
         self.parent = parent
 
@@ -55,10 +55,11 @@ class SymbolTable:
         return self.symbols[id]
 
     def insert(self, name: str, val: AstirExpr) -> None:
-        self.last_id += 1
-        symbol = Symbol(name, val, self.id, self.last_id)
-        self.symbols[self.last_id] = symbol
-        self.name_to_id[name] = self.last_id
+        symbol = Symbol(name, val, self.id, self.usable_id)
+        self.symbols[self.usable_id] = symbol
+        self.name_to_id[name] = self.usable_id
+        print(f"!!! || {self.usable_id} -> {name}")
+        self.usable_id += 1
 
     def __repr__(self) -> str:
         return f"{self.symbols}"
@@ -89,13 +90,14 @@ class LambdaDefinition(AstirExpr):
 
 
 class Lambda(AstirExpr):
-    def __init__(self, parameters: SymbolTable, body: AstirExpr, belongs_to: int):
+    def __init__(self, parameters: SymbolTable, body: AstirExpr, belongs_to: int, symbol_id: int):
         lambda_def = LambdaDefinition(parameters)
         super().__init__(lambda_def)
         self.definition = lambda_def
         self.belongs_to = belongs_to
         self.body = body
-
+        self.symbol_id = symbol_id
+        
     def __repr__(self):
         return f"Lambda(Def={self.definition}, Body={self.body})"
 
