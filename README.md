@@ -8,3 +8,6 @@
 
 ### New(ish?) ideas?
 - `m'` and `t'` are "prime forms". open issue for naming ideas or concerns! More on these later:tm:
+
+
+as -o boot.o boot.s && ld -macosx_version_min 13.0.0 -o boot boot.o -lSystem -syslibroot `xcrun -sdk macosx --show-sdk-path` -e _start -arch arm64
