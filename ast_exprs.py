@@ -86,6 +86,14 @@ class LambdaDefinition(AstirExpr):
 
     def __repr__(self):
         return f"LambdaDef(Parameters={self.parameters})"
+    
+class InlineASM(AstirExpr):
+    def __init__(self, lines: list[str]):
+        super().__init__(PrimitiveTypes.UNIT)
+        self.lines = lines
+
+    def __repr__(self):
+        return f"InlineASM(Lines={self.lines})"
 
 
 class Lambda(AstirExpr):
