@@ -58,7 +58,6 @@ class SymbolTable:
         symbol = Symbol(name, val, self.id, self.usable_id)
         self.symbols[self.usable_id] = symbol
         self.name_to_id[name] = self.usable_id
-        print(f"!!! || {self.usable_id} -> {name}")
         self.usable_id += 1
 
     def __repr__(self) -> str:
@@ -97,7 +96,7 @@ class Lambda(AstirExpr):
         self.belongs_to = belongs_to
         self.body = body
         self.symbol_id = symbol_id
-        
+
     def __repr__(self):
         return f"Lambda(Def={self.definition}, Body={self.body})"
 

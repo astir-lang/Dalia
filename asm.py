@@ -1,6 +1,20 @@
 from abc import ABC
-from ast_exprs import Application, Assignment, AstirExpr, Identifier, Lambda, Literal, Reference, ShuntingYardAlgorithmResults, Symbol, SymbolTable  # type: ignore
+from ast_exprs import Application, Assignment, AstirExpr, Identifier, Lambda, LambdaDefinition, Literal, Reference, ShuntingYardAlgorithmResults, Symbol, SymbolTable  # type: ignore
 from common import Cursor, PrimitiveTypes
+
+
+class ASMFunction:
+    def __init__(
+        self, param_to_reg: dict[int, int], name_to_param: dict[str, int]
+    ) -> None:
+        self.param_to_reg = param_to_reg
+        self.name_to_param = name_to_param
+        # The next usable register is calculated by getting
+        # the last inserted item in the self.param_to_reg
+        # and by adding 1 to get us to the next x register
+        self.next_usable_reg = (
+            next(reversed(param_to_reg)) + 1 if len(param_to_reg) > 0 else 0
+        )
 
 
 class ASM(Cursor):
@@ -15,7 +29,7 @@ class ASM(Cursor):
         # The inner dictionary holds the parameter index -> register
         # map. TODO: introduce a way to recognize different
         # register sizes for a64 (rn)
-        self.fn_register_store: dict[int, dict[int, int]] = {}
+        self.fn_register_store: dict[int, ASMFunction] = {}
         self.inside_fn: int | None = None
         # # Format (ref_id, register)
         # self.ref_id_and_register: list[tuple[int, int]] = []
@@ -24,6 +38,14 @@ class ASM(Cursor):
 
         # # This should be cleared after every generate call.
         # self.registers_in_use: list[Register] = []
+
+    def is_register_reserved(self, register: int) -> bool:
+        return False
+
+    def current_fn(self) -> ASMFunction | None:
+        if self.inside_fn is None:
+            return None
+        return self.fn_register_store[self.inside_fn]
 
     def generate_all(self):
         while self.current() is not None:
@@ -48,6 +70,7 @@ class ASM(Cursor):
                 symbols = c_expr.right.definition.parameters.symbols
                 last_used_register = 0
                 lambda_param_to_register: dict[int, int] = {}
+                param_name_to_idx: dict[str, int] = {}
                 for symbol_idx in symbols:
                     symbol = symbols[symbol_idx]
                     if symbol.name == "ret":
@@ -55,75 +78,93 @@ class ASM(Cursor):
                         # should always be the last item in the dict
                         break
                     lambda_param_to_register[symbol_idx] = last_used_register
+                    param_name_to_idx[symbol.name] = symbol_idx
                     last_used_register += 1
 
-                self.fn_register_store[c_expr.right.symbol_id] = lambda_param_to_register
+                asm_function = ASMFunction(lambda_param_to_register, param_name_to_idx)
+                self.fn_register_store[c_expr.right.symbol_id] = asm_function
                 # This is so we can parse and get the correct arguments
                 self.inside_fn = c_expr.right.symbol_id
-                to_add.append(f"{c_expr.left.value}: // Symbol ID: {c_expr.right.symbol_id}")
+                to_add.append(
+                    f"{c_expr.left.value}: // Symbol ID: {c_expr.right.symbol_id}"
+                )
+                # to_add.append(f"// {asm_function.next_usable_reg}")
                 to_add.extend(self.generate(c_expr.right.body))
                 to_add.append("ret")
-        elif isinstance(c_expr, Reference):
-            pass
+                self.inside_fn = None
         elif isinstance(c_expr, ShuntingYardAlgorithmResults):
-            if self.inside_fn is None:
-                raise Exception()
-            print(f"CURRENT FN: {self.inside_fn} AND ITS PARAMS: {self.fn_register_store[self.inside_fn]}")
-            pass
-        # elif isinstance(c_expr, Application):
-        #     reserved_registers = self.fn_register_man[c_expr.lambda_ref.symbol_id]
-        #     for idx, v in enumerate(reserved_registers):
-        #         if not (0 <= idx < len(c_expr.parameters)):
-        #             raise Exception(f"Invalid application")
-        #         param: AstirExpr = c_expr.parameters[idx]
-        #         if not isinstance(param, Literal) or param.ty != PrimitiveTypes.INT:
-        #             raise Exception("TODO: HANDLE MORE THAN JUST LITERALS")
-        #         to_add.append(f"mov x{v[1]}, {param.val}")
+            inside_fn = self.current_fn()
+            if inside_fn is None:
+                raise Exception("Out of place sya...")
+            if len(c_expr.oeprators) > 0:
+                raise Exception("Invalid shunting yard algorithm")
+            stack: list[str] = []
+            c_expr.results.reverse()
+            while len(c_expr.results) > 0 and (term := c_expr.results.pop()):
+                # TODO: make some like class method or something
+                # to make this cleaner??
+                if isinstance(term, Reference):
+                    stack.extend(self.generate(term))
+                elif isinstance(term, Literal):
+                    if term.ty != PrimitiveTypes.INT:
+                        raise Exception("Unexpected type.")
+                    stack.append(str(term.val))
+                elif isinstance(term, str):
+                    if term == "+":
+                        stack.reverse()
+                        (item1, item2) = (stack.pop(), stack.pop())
+                        if not item1.startswith("x"):
+                            register = inside_fn.next_usable_reg
+                            to_add.append(f"mov x{register}, {item1}")
+                            item1 = f"x{register}"
+                            inside_fn.next_usable_reg += 1
+                        print(
+                            f"Adding last two items on stack: {item1}, {item2} = {item1 + item2}"
+                        )
+                        to_add.append(f"add x0, {item1}, {item2}")
+        elif isinstance(c_expr, Reference):
+            symbol_in_ref: Symbol | None = self.lookup_symbol(
+                c_expr.belongs_to, c_expr.symbol_id
+            )
+            if symbol_in_ref is None:
+                raise Exception(f'Failed to lookup referenced symbol "{c_expr.name}"')
+            if (
+                (c_fn := self.current_fn())
+                and c_fn is not None
+                and c_expr.name in c_fn.name_to_param
+                and c_fn.name_to_param[c_expr.name] in c_fn.param_to_reg
+            ):
+                register = c_fn.param_to_reg[c_fn.name_to_param[c_expr.name]]
+                to_add.append(f"x{register}")
+        elif isinstance(c_expr, Application):
+            fn_parameters = self.fn_register_store[c_expr.lambda_ref.symbol_id]
+            if fn_parameters is None:
+                raise Exception("Failed to get reserved registers for fn")
+            elif len(list(fn_parameters.param_to_reg.keys())) != len(c_expr.parameters):
+                raise Exception("More parameters than reserved registers...")
+            application_symbol: Symbol | None = self.lookup_symbol(
+                c_expr.lambda_ref.belongs_to, c_expr.lambda_ref.symbol_id
+            )
+            if application_symbol is None:
+                raise Exception(f"failed to find symbol {c_expr.lambda_ref.symbol_id}")
+            elif (
+                not isinstance(application_symbol.val, Lambda)
+                or c_expr.lambda_ref.symbol_id not in self.fn_register_store
+            ):
+                raise Exception(
+                    "Expected this symbol to come back to a lambda definition"
+                )
 
-        #     symbol: Symbol | None = self.lookup_symbol(
-        #         c_expr.lambda_ref.belongs_to, c_expr.lambda_ref.symbol_id
-        #     )
-        #     if symbol is None:
-        #         raise Exception(f"failed to find symbol {c_expr.lambda_ref.symbol_id}")
-        #     to_add.append(f"bl {symbol.name}")
-        # elif isinstance(c_expr, Reference):
-        #     symbol = self.lookup_symbol(c_expr.belongs_to, c_expr.symbol_id)
-        #     if symbol is None:
-        #         raise Exception("failed to lookup symbol")
-        #     if isinstance(symbol.val, Reference):
-        #         symbol2 = self.lookup_symbol(
-        #             symbol.val.belongs_to, symbol.val.symbol_id
-        #         )
-        #         register = self.current_usable_register
-        #         self.ref_id_and_register.append((symbol.val.symbol_id, register))
-        #         to_add.append(f"x{register}")  # Temp
-        # elif isinstance(c_expr, ShuntingYardAlgorithmResults):
-        #     if len(c_expr.oeprators) > 0:
-        #         raise Exception("Invalid shunting yard algorithm")
-        #     stack: list[str] = []
-        #     c_expr.results.reverse()
-        #     while len(c_expr.results) > 0 and (term := c_expr.results.pop()):
-        #         # TODO: make some like class method or something
-        #         # to make this cleaner??
-        #         if isinstance(term, Reference):
-        #             stack.extend(self.generate(term))
-        #         elif isinstance(term, Literal):
-        #             if term.ty != PrimitiveTypes.INT:
-        #                 raise Exception("Unexpected type.")
-        #             stack.append(str(term.val))
-        #         elif isinstance(term, str):
-        #             if term == "+":
-        #                 stack.reverse()
-        #                 (item1, item2) = (stack.pop(), stack.pop())
-        #                 if not item1.startswith("x"):
-        #                     register = self.current_usable_register
-        #                     to_add.append(f"mov x{register}, {item1}")
-        #                     item1 = f"x{register}"
-        #                     self.current_usable_register += 1
-        #                 print(
-        #                     f"Adding last two items on stack: {item1}, {item2} = {item1 + item2}"
-        #                 )
-        #                 to_add.append(f"add x0, {item1}, {item2}")
+            function_parameters = application_symbol.val.definition.parameters.symbols
+            for idx, param in enumerate(c_expr.parameters):
+                if not (0 <= idx < len(list(fn_parameters.param_to_reg.keys()))):
+                    raise Exception(
+                        "Invalid Application...More parameters than reserved registers"
+                    )
+                reserved_register = fn_parameters.param_to_reg[idx]
+                if not isinstance(param, Literal) or param.ty != PrimitiveTypes.INT:
+                    raise Exception("TODO: HANDLE MORE THAN JUST LITERALS")
+                to_add.append(f"mov x{reserved_register}, {param.val}")
+            to_add.append(f"bl {application_symbol.name}")
 
-        #     print(f"{c_expr}")
         return to_add
