@@ -1,3 +1,7 @@
+d'CustomDataType :: Point int int
+
+d'MultipleCustomDataTypes :: CustomDataType | PointWithZ int int int
+
 take_int_and_add_2\ x int, y int :: int → x + y
 
 _start\ :: int → take_int_and_add_2 2 2

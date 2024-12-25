@@ -2,11 +2,27 @@ from abc import ABC
 from common import PrimitiveTypes, bcolors
 from typing import Any, Union
 
+
 class AstirExpr(ABC):
-    def __init__(self, ty: Union['PrimitiveTypes', 'AstirExpr']):
+    def __init__(self, ty: Union["PrimitiveTypes", "AstirExpr"]):
         super().__init__()
         self.ty = ty
-        
+
+
+# Algebraic Data Type
+class ADT(AstirExpr):
+    def __init__(self, ty, name: str, values: list[AstirExpr]):
+        super().__init__(ty)
+        self.name = name
+        self.values = values
+
+    def __repr__(self):
+        return f"AlgebraicDataType(NAME={self.name}, TY={self.ty}, VALUES={self.values})"
+
+class Dummy(AstirExpr):
+    def __init__(self):
+        super().__init__(PrimitiveTypes.UNIT)
+
 
 def check_is_allowed(AstirExpr: AstirExpr | None) -> bool:
     allowed = AstirExpr is not None or (
@@ -14,7 +30,11 @@ def check_is_allowed(AstirExpr: AstirExpr | None) -> bool:
         or isinstance(AstirExpr, Reference)
         or isinstance(AstirExpr, Literal)
     )
-    if AstirExpr is not None and isinstance(AstirExpr, Identifier) and AstirExpr.for_assignment:
+    if (
+        AstirExpr is not None
+        and isinstance(AstirExpr, Identifier)
+        and AstirExpr.for_assignment
+    ):
         allowed = False
     return allowed
 
@@ -54,11 +74,13 @@ class SymbolTable:
             return None
         return self.symbols[id]
 
-    def insert(self, name: str, val: AstirExpr) -> None:
+    def insert(self, name: str, val: AstirExpr) -> Symbol:
         symbol = Symbol(name, val, self.id, self.usable_id)
         self.symbols[self.usable_id] = symbol
         self.name_to_id[name] = self.usable_id
         self.usable_id += 1
+
+        return symbol
 
     def __repr__(self) -> str:
         return f"{self.symbols}"
@@ -66,7 +88,7 @@ class SymbolTable:
 
 class LambdaDefinition(AstirExpr):
     def __init__(
-        self, parameters: SymbolTable# | list[PrimitiveTypes | AstirExpr]
+        self, parameters: SymbolTable  # | list[PrimitiveTypes | AstirExpr]
     ):  # TODO: accept symboltable or list[AstirExpr]
         super().__init__(self)
         # todo:
@@ -81,12 +103,13 @@ class LambdaDefinition(AstirExpr):
         #     else:
         #         lambda_parameter_types = parameters
         #     self.parameters = lambda_parameter_types
-        
-        self.parameters=parameters
+
+        self.parameters = parameters
 
     def __repr__(self):
         return f"LambdaDef(Parameters={self.parameters})"
-    
+
+
 class InlineASM(AstirExpr):
     def __init__(self, lines: list[str]):
         super().__init__(PrimitiveTypes.UNIT)
@@ -97,7 +120,9 @@ class InlineASM(AstirExpr):
 
 
 class Lambda(AstirExpr):
-    def __init__(self, parameters: SymbolTable, body: AstirExpr, belongs_to: int, symbol_id: int):
+    def __init__(
+        self, parameters: SymbolTable, body: AstirExpr, belongs_to: int, symbol_id: int
+    ):
         lambda_def = LambdaDefinition(parameters)
         super().__init__(lambda_def)
         self.definition = lambda_def
@@ -108,8 +133,11 @@ class Lambda(AstirExpr):
     def __repr__(self):
         return f"Lambda(Def={self.definition}, Body={self.body})"
 
+
 class Parenthesized(AstirExpr):
-    def __init__(self, ty: AstirExpr | PrimitiveTypes, inner: AstirExpr | None = None) -> None:
+    def __init__(
+        self, ty: AstirExpr | PrimitiveTypes, inner: AstirExpr | None = None
+    ) -> None:
         super().__init__(ty)
         self.inner = inner
 
@@ -149,8 +177,10 @@ class AstirTuple(AstirExpr):
 class Parameter(AstirExpr):
     def __init__(self):
         super().__init__(PrimitiveTypes.UNIT)
+
     def __repr__(self) -> str:
         return f"Parameter"
+
 
 class Assignment(AstirExpr):
     def __init__(self, left: AstirExpr, right: AstirExpr) -> None:

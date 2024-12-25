@@ -4,7 +4,9 @@ from typing import Generic, Callable, TypeVar
 
 from common import TT, Cursor, PrimitiveTypes, bcolors, operators
 from ast_exprs import (
+    ADT,
     AstirExpr,
+    Dummy,
     ShuntingYardAlgorithmResults,
     Identifier,
     Literal,
@@ -23,11 +25,7 @@ from ast_exprs import (
 
 
 class Token:
-    def __init__(
-        self, ty: TT | None, prim_ty: PrimitiveTypes | None = None, val=None
-    ) -> None:
-        if ty == None:
-            raise Exception("Token type was none...")
+    def __init__(self, ty: TT, prim_ty: PrimitiveTypes | None = None, val=None) -> None:
         self.ty = ty
         self.val = val
         self.prim_ty = prim_ty
@@ -49,6 +47,7 @@ def get_op(possible_op: Token | None) -> tuple[str, dict[str, int]] | None:
 
 def is_valid_ident(c: str) -> bool:
     return c.isalnum() or c == "_"
+
 
 class Lexer(Cursor):
     def __init__(self, input: str) -> None:
@@ -186,7 +185,7 @@ class Lexer(Cursor):
             return Token(TT.IDENT, val=ident)
         else:
             return Token(TT(c))
-        return Token(None)
+        return Token(TT.DUMMY)
 
 
 class Parser(Cursor):
@@ -206,6 +205,7 @@ class Parser(Cursor):
         self.op_stack: list[str] = []
         # temp solution
         self.current_number_of_advances = 0
+        self.tag = 0
         self.already_parsing_sya = False
 
     def resolve_type(self, ty: Expr) -> None:
@@ -241,44 +241,67 @@ class Parser(Cursor):
             self.current_number_of_advances = 0
             self.using_st = 0
 
-    def parse(self) -> AstirExpr | None:
+    def parse(self, tag=None) -> AstirExpr | None:
         c = self.current()
         result: AstirExpr | None = None
         if c is None:
             return None
 
-        # elif c.ty == TT.PRIME_FORM:
-        #     self.advance()
-        #     if (next := self.current()) and next.ty != TT.IDENT:
-        #         raise Exception(
-        #             f"Expected double colon after the prime form...got {next}"
-        #         )
-        #     ident = self.parse()
-        #     self.advance()
-        #     parts: list[Expr] = []
-        #     while True:
-        #         c = self.current()
-        #         if c is None:
-        #             break
-        #         elif c.ty == TT.PIPE:
-        #             self.advance()
-        #             continue
-        #         part = self.parse()
-        #         if (
-        #             not isinstance(part, Tuple)
-        #             and not isinstance(part, Reference)
-        #             and not isinstance(part, PrimitiveType)
-        #             and (
-        #                 not isinstance(part, Identifier)
-        #                 or (isinstance(part, Identifier) and part.for_assignment)
-        #             )
-        #         ):
-        #             self.at -= 1
-        #             break
+        elif c.ty == TT.PRIME_FORM:
+            self.advance()
+            if (next := self.current()) and not next.ty == TT.IDENT:
+                raise Exception("Expected an identifier after prime form")
+            name = self.parse()
+            if not isinstance(name, Identifier):
+                raise Exception(f"Expected identifier for the name {name} [{tag}]")
+            print(f"Parsing adt with name {name.value} [TAG:{tag}]")
 
-        #         parts.append(part)
+            if (next := self.current()) and not next.ty == TT.DOUBLE_COLON:
+                raise Exception(
+                    f"Expected double colon after the prime form...got {next}"
+                )
+            self.advance()
+            parsing: list[AstirExpr] = []
+            while True:
+                current = self.current()
+                if current is None:
+                    break
+                elif current.ty == TT.PIPE:
+                    #parsing = []
+                    self.advance()
+                    continue
+                elif current.ty == TT.PRIME_FORM:
+                    break
 
-        #     result = CustomDataType(ident, parts)
+                parsed = self.parse("23")
+                print(f"{parsed}")
+                if (
+                    parsed is None
+                    or not isinstance(parsed, Literal)
+                    and not isinstance(parsed, Reference)
+                    and not isinstance(parsed, PrimitiveType)
+                    and (
+                        not isinstance(parsed, Identifier)
+                        or (
+                            isinstance(parsed, Identifier)
+                            and parsed.for_assignment == True
+                        )
+                    )
+                ):
+                    self.at -= 1
+                    break
+                parsing.append(parsed)
+
+            print(
+                f"End of the road... here is the current constructor: [{tag}] ({name.value}) {parsing}"
+            )
+
+            symbol_table = self.symbol_tables[self.using_st]
+            new_symbol = symbol_table.insert(name.value, Dummy())
+            result = ADT(
+                Reference(name.value, symbol_table.id, new_symbol.id, False), name.value, parsing
+            )
+            self.tag += 1
         elif c.ty == TT.LITERAL:
             if c.prim_ty is None or c.val is None:
                 raise Exception("Invalid primitive type...how?")
@@ -316,7 +339,9 @@ class Parser(Cursor):
                     if (
                         (c2 := self.current())
                         and c2 is not None
-                        and c2.ty == TT.BACKSLASH
+                        # Backslah for lambda assignments
+                        # Double colon for ADTs
+                        and (c2.ty == TT.BACKSLASH or c2.ty == TT.DOUBLE_COLON)
                     ):
                         for_assignment = True
                     result = Identifier(c.val, for_assignment)
@@ -403,7 +428,12 @@ class Parser(Cursor):
             if not isinstance(popped, Identifier):
                 return popped
             symbol_table = self.symbol_tables[previous_symbol_table_id]
-            _lambda = Lambda(lambda_symbol_table, body, previous_symbol_table_id, symbol_table.usable_id)
+            _lambda = Lambda(
+                lambda_symbol_table,
+                body,
+                previous_symbol_table_id,
+                symbol_table.usable_id,
+            )
             symbol_table.insert(popped.value, _lambda)
             result = Assignment(
                 popped,
@@ -411,7 +441,7 @@ class Parser(Cursor):
             )
 
         if result is None:
-            raise Exception("Failed to parse ANYTHING.")
+            raise Exception(f"(at:{self.at}) Failed to parse ANYTHING => {c}")
         # At this point, past previous parsing, we should have advanced past
         # the last token and now be face-to-face with the rare, elusive, OP!
         c = self.current()

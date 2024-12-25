@@ -42,7 +42,7 @@ class TT(Enum):
     LITERAL = "LITERAL"
     COMMENT = "COMMENT"
     PRIME_FORM = "PRIME_FORM"
-
+    DUMMY = "DUMMY"
 
 operators = {
     "+": {
