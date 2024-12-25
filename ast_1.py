@@ -7,6 +7,8 @@ from ast_exprs import (
     ADT,
     AstirExpr,
     Dummy,
+    InlineASM,
+    LambdaDefinition,
     ShuntingYardAlgorithmResults,
     Identifier,
     Literal,
@@ -192,12 +194,46 @@ class Parser(Cursor):
     def __init__(self, input: list[Token]) -> None:
         super().__init__(input)
         self.results: list["AstirExpr"] = []
-        global_symbols = SymbolTable(0)
+        global_symbols: SymbolTable = SymbolTable(0)
         # TODO: we are waiting for typedef!
         global_symbols.insert("int", PrimitiveType(PrimitiveTypes.INT))
         global_symbols.insert("unit", PrimitiveType(PrimitiveTypes.UNIT))
         global_symbols.insert("str", PrimitiveType(PrimitiveTypes.STR))
         global_symbols.insert("float", PrimitiveType(PrimitiveTypes.FLOAT))
+
+        inline_assembly_lambda_def_symbol_table: SymbolTable = SymbolTable(1)
+        inline_assembly_lambda_def_symbol_table.insert(
+            "xs", PrimitiveType(PrimitiveTypes.LIST, size=1)
+        )
+        inline_assembly_lambda_def_symbol_table.insert(
+            "ret", PrimitiveType(PrimitiveTypes.UNIT)
+        )
+
+        def assembly_handler(args: list[AstirExpr]) -> AstirExpr:
+            if len(args) > 1:
+                raise Exception("assembly expects one argument, a list.")
+            arg: AstirExpr = args.pop()
+            if not isinstance(arg, Literal):
+                raise Exception("Only argument should be a literal")
+
+            return InlineASM(
+                list(
+                    map(
+                        lambda x: ("..." if not isinstance(x, Literal) else x.val),
+                        arg.val,
+                    )
+                )
+            )
+
+        global_symbols.insert(
+            "asm",
+            LambdaDefinition(
+                inline_assembly_lambda_def_symbol_table,
+                special_callable=assembly_handler,
+            ),
+        )
+
+        global_symbols.insert("IO", PrimitiveType(PrimitiveTypes.UNIT))
 
         self.symbol_tables: dict[int, SymbolTable] = {0: global_symbols}
         self.using_st: int = 0
@@ -246,7 +282,22 @@ class Parser(Cursor):
         result: AstirExpr | None = None
         if c is None:
             return None
-
+        elif c.ty == TT.OPEN_SQUARE:
+            self.advance()
+            collected: list[AstirExpr] = []
+            while True:
+                current = self.current()
+                if current is None or current.ty == TT.CLOSE_SQUARE:
+                    self.advance()
+                    break
+                parsed = self.parse()
+                if parsed is None:
+                    self.at -= 1
+                    break
+                collected.append(parsed)
+            result = Literal(
+                PrimitiveType(PrimitiveTypes.LIST, size=len(collected)), collected
+            )
         elif c.ty == TT.PRIME_FORM:
             self.advance()
             if (next := self.current()) and not next.ty == TT.IDENT:
@@ -254,7 +305,6 @@ class Parser(Cursor):
             name = self.parse()
             if not isinstance(name, Identifier):
                 raise Exception(f"Expected identifier for the name {name} [{tag}]")
-            print(f"Parsing adt with name {name.value} [TAG:{tag}]")
 
             if (next := self.current()) and not next.ty == TT.DOUBLE_COLON:
                 raise Exception(
@@ -267,14 +317,13 @@ class Parser(Cursor):
                 if current is None:
                     break
                 elif current.ty == TT.PIPE:
-                    #parsing = []
+                    # parsing = []
                     self.advance()
                     continue
                 elif current.ty == TT.PRIME_FORM:
                     break
 
                 parsed = self.parse("23")
-                print(f"{parsed}")
                 if (
                     parsed is None
                     or not isinstance(parsed, Literal)
@@ -291,22 +340,19 @@ class Parser(Cursor):
                     self.at -= 1
                     break
                 parsing.append(parsed)
-
-            print(
-                f"End of the road... here is the current constructor: [{tag}] ({name.value}) {parsing}"
-            )
-
             symbol_table = self.symbol_tables[self.using_st]
             new_symbol = symbol_table.insert(name.value, Dummy())
             result = ADT(
-                Reference(name.value, symbol_table.id, new_symbol.id, False), name.value, parsing
+                Reference(name.value, symbol_table.id, new_symbol.id, False),
+                name.value,
+                parsing,
             )
             self.tag += 1
         elif c.ty == TT.LITERAL:
             if c.prim_ty is None or c.val is None:
                 raise Exception("Invalid primitive type...how?")
             self.advance()
-            result = Literal(c.prim_ty, c.val)
+            result = Literal(PrimitiveType(c.prim_ty), c.val)
         elif c.ty == TT.IDENT:
             if c.val is None:
                 raise Exception("Identifier with no value?")
@@ -455,8 +501,14 @@ class Parser(Cursor):
             symbol = st.lookup_by_id(result.symbol_id)
             if symbol is None:
                 raise Exception(f"Unkown symbol reference: {result}")
-            if isinstance(symbol.val, Lambda):
-                parameters = symbol.val.definition.parameters
+            if isinstance(symbol.val, Lambda) or isinstance(
+                symbol.val, LambdaDefinition
+            ):
+                parameters = (
+                    symbol.val.definition.parameters
+                    if isinstance(symbol.val, Lambda)
+                    else symbol.val.parameters
+                )
                 p_len = len(parameters.symbols.keys())
 
                 # if its 1 then it HAS to be the return type...right?
@@ -473,22 +525,35 @@ class Parser(Cursor):
                     possible_args: list[AstirExpr] = []
 
                     for k, ref in parameters.symbols.items():
+                        print(
+                            f"{bcolors.BOLD}{bcolors.OKGREEN}** Checking for argument {ref.name} with type: {ref.val}{bcolors.ENDC}"
+                        )
                         if ref.name == "ret":
                             continue
-                        elif not isinstance(ref.val, Reference):
-                            break
-                        type_symbol = self.lookup(ref.val.name, ref.val.belongs_to)
-                        if type_symbol is None or not isinstance(
-                            type_symbol.val, PrimitiveType
-                        ):
-                            break
+
+                        type_symbol: PrimitiveType | None = None
+                        if isinstance(ref.val, Reference):
+                            type_symbol_symbol = self.lookup(
+                                ref.val.name, ref.val.belongs_to
+                            )
+                            if type_symbol_symbol is None or not isinstance(
+                                type_symbol_symbol.val, PrimitiveType
+                            ):
+                                break
+                            type_symbol = type_symbol_symbol.val
+                        elif isinstance(ref.val, PrimitiveType):
+                            type_symbol = ref.val
+
+                        if type_symbol is None:
+                            raise Exception("Could not find suitable type.")
+
                         possible_arg = self.parse()
                         if possible_arg is None:
                             raise Exception("Failed to parse")
-
-                        if possible_arg.ty != type_symbol.val.ty:
+                        print(f"PARSED: {possible_arg}")
+                        if possible_arg.ty.val != type_symbol.ty:
                             raise Exception(
-                                f"{bcolors.FAIL}{bcolors.BOLD}Type mismatch{bcolors.ENDC}"
+                                f"{bcolors.FAIL}{bcolors.BOLD}Type mismatch{bcolors.ENDC}\n\t**Expected {type_symbol.ty}\n\t**Got {possible_arg.ty.val}"
                             )
                         elif (
                             possible_arg is None
@@ -505,6 +570,11 @@ class Parser(Cursor):
                         self.current_number_of_advances = 0
                         return result
 
+                    if (
+                        isinstance(symbol.val, LambdaDefinition)
+                        and symbol.val.special_callable is not None
+                    ):
+                        return symbol.val.special_callable(possible_args)
                     return Application(
                         Reference(symbol.name, symbol.belongs_to, symbol.id, False),
                         possible_args,

@@ -1,6 +1,6 @@
 from abc import ABC
 from common import PrimitiveTypes, bcolors
-from typing import Any, Union
+from typing import Any, Union, Callable
 
 
 class AstirExpr(ABC):
@@ -17,7 +17,10 @@ class ADT(AstirExpr):
         self.values = values
 
     def __repr__(self):
-        return f"AlgebraicDataType(NAME={self.name}, TY={self.ty}, VALUES={self.values})"
+        return (
+            f"AlgebraicDataType(NAME={self.name}, TY={self.ty}, VALUES={self.values})"
+        )
+
 
 class Dummy(AstirExpr):
     def __init__(self):
@@ -89,6 +92,7 @@ class SymbolTable:
 class LambdaDefinition(AstirExpr):
     def __init__(
         self, parameters: SymbolTable  # | list[PrimitiveTypes | AstirExpr]
+        , special_callable: Callable[[list[AstirExpr]], AstirExpr] | None = None
     ):  # TODO: accept symboltable or list[AstirExpr]
         super().__init__(self)
         # todo:
@@ -105,6 +109,7 @@ class LambdaDefinition(AstirExpr):
         #     self.parameters = lambda_parameter_types
 
         self.parameters = parameters
+        self.special_callable = special_callable
 
     def __repr__(self):
         return f"LambdaDef(Parameters={self.parameters})"
@@ -210,22 +215,23 @@ class Reference(AstirExpr):
         return f"Ref(ST={self.belongs_to}, Ref={self.name}, ID={self.symbol_id})"
 
 
+class PrimitiveType(AstirExpr):
+    def __init__(self, inner: PrimitiveTypes, size: int | None = None) -> None:
+        super().__init__(inner)
+        self.val = inner
+        self.size = size
+
+    def __repr__(self) -> str:
+        return f"PrimitiveType(I={self.val}, SIZE={self.size})"
+
+
 class Literal(AstirExpr):
-    def __init__(self, literal_ty: PrimitiveTypes, val: Any) -> None:
+    def __init__(self, literal_ty: PrimitiveType, val: Any) -> None:
         super().__init__(literal_ty)
         self.val = val
 
     def __repr__(self) -> str:
         return f"Literal(LTY={self.ty}, V={self.val})"
-
-
-class PrimitiveType(AstirExpr):
-    def __init__(self, inner: PrimitiveTypes) -> None:
-        super().__init__(inner)
-        self.val = inner
-
-    def __repr__(self) -> str:
-        return f"PrimitiveType(I={self.val})"
 
 
 """

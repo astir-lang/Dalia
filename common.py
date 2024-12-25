@@ -20,6 +20,7 @@ class bcolors:
 class PrimitiveTypes(Enum):
     INT = auto()
     STR = auto()
+    LIST = auto()
     FLOAT = auto()
     UNIT = auto()
 

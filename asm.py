@@ -1,5 +1,5 @@
 from abc import ABC
-from ast_exprs import Application, Assignment, AstirExpr, Identifier, Lambda, LambdaDefinition, Literal, Reference, ShuntingYardAlgorithmResults, Symbol, SymbolTable  # type: ignore
+from ast_exprs import Application, Assignment, AstirExpr, Identifier, InlineASM, Lambda, LambdaDefinition, Literal, Reference, ShuntingYardAlgorithmResults, Symbol, SymbolTable  # type: ignore
 from common import Cursor, PrimitiveTypes
 
 
@@ -65,7 +65,9 @@ class ASM(Cursor):
     def generate(self, expr: AstirExpr | None = None) -> list[str]:
         c_expr = self.current() if expr is None else expr
         to_add: list[str] = []
-        if isinstance(c_expr, Assignment):
+        if isinstance(c_expr, InlineASM):
+            to_add.extend(c_expr.lines)
+        elif isinstance(c_expr, Assignment):
             if isinstance(c_expr.right, Lambda) and isinstance(c_expr.left, Identifier):
                 symbols = c_expr.right.definition.parameters.symbols
                 last_used_register = 0

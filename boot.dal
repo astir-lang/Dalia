@@ -1,7 +1,9 @@
-d'CustomDataType :: Point int int
+//d'IO :: ()
 
-d'MultipleCustomDataTypes :: CustomDataType | PointWithZ int int int
+//d'CustomDataType :: Point int int
 
-take_int_and_add_2\ x int, y int :: int → x + y
+//d'MultipleCustomDataTypes :: CustomDataType | PointWithZ int int int
 
-_start\ :: int → take_int_and_add_2 2 2
+//take_int_and_add_2\ x int, y int :: int → x + y
+
+_start\ :: int → asm ["bl print_hello_world"]
