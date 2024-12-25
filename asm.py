@@ -22,7 +22,11 @@ class ASM(Cursor):
         self, input: list[AstirExpr], symbol_tables: dict[int, SymbolTable]
     ) -> None:
         super().__init__(input)
-        self.lines: list[str] = [".global _start", ".p2align 3"]
+        self.lines: list[str] = [
+            ".global _start",
+            ".p2align 3",
+            'helloworld: .ascii  "Hello World!"',
+        ]
         self.symbol_tables: dict[int, SymbolTable] = symbol_tables
         # All tables related to registers most likely
         # have keys that map to a Symbol's id.

@@ -290,6 +290,9 @@ class Parser(Cursor):
                 if current is None or current.ty == TT.CLOSE_SQUARE:
                     self.advance()
                     break
+                elif current.ty == TT.COMMA:
+                    self.advance()
+                    continue
                 parsed = self.parse()
                 if parsed is None:
                     self.at -= 1
