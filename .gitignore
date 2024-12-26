@@ -13,3 +13,4 @@ whatever.s
 boot
 whatever
 .vscode
+*.vsix

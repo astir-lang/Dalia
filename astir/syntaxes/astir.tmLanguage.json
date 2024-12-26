@@ -1,32 +1,67 @@
 {
-	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-	"scopeName": "boot.dal",
-	"name": "Astir",
+	"scopeName": "source.astir",
 	"patterns": [
-		{
-			"include": "#keywords"
-		},
-		{
-			"include": "#strings"
-		}
+	  {
+		"name": "comment.line.double-slash.astir",
+		"match": "//.*$"
+	  },
+	  {
+		"name": "keyword.declaration.astir",
+		"match": "\\bd'[A-Za-z_][A-Za-z0-9_]*\\b"
+	  },
+	  {
+		"name": "entity.name.function.astir",
+		"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\\\"
+	  },
+	  {
+		"name": "variable.parameter.astir",
+		"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\s+[A-Za-z_][A-Za-z0-9_]*\\b"
+	  },
+	  {
+		"name": "storage.type.astir",
+		"match": "::"
+	  },
+	  {
+		"name": "constant.numeric.astir",
+		"match": "\\b\\d+\\b"
+	  },
+	  {
+		"name": "keyword.control.arrow.astir",
+		"match": "→"
+	  },
+	  {
+		"name": "string.quoted.double.astir",
+		"begin": "\\[\"",
+		"end": "\"\\]",
+		"patterns": [
+		  {
+			"name": "constant.character.escape.astir",
+			"match": "\\\\."
+		  }
+		]
+	  },
+	  {
+		"name": "Comment",
+		"scopeName": "comment.line.double-slash",
+		"patterns": [
+		  {
+			"match": "//.*",
+			"name": "comment.line.double-slash"
+		  }
+		]
+	  },	  
+	  {
+		"name": "meta.assembly.astir",
+		"begin": "asm \\[",
+		"end": "\\]",
+		"patterns": [
+		  {
+			"name": "string.unquoted.astir",
+			"match": "\".*?\""
+		  }
+		]
+	  }
 	],
-	"repository": {
-		"keywords": {
-			"patterns": [{
-				"name": "keyword.control.astir",
-				"match": "\\b(if|while|for|return)\\b"
-			}]
-		},
-		"strings": {
-			"name": "string.quoted.double.astir",
-			"begin": "\"",
-			"end": "\"",
-			"patterns": [
-				{
-					"name": "constant.character.escape.astir",
-					"match": "\\\\."
-				}
-			]
-		}
-	},
-}
+	"repository": {}
+  }
+  

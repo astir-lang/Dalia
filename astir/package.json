@@ -18,7 +18,7 @@
     }],
     "grammars": [{
       "language": "astir",
-      "scopeName": "",
+      "scopeName": "source.astir",
       "path": "./syntaxes/astir.tmLanguage.json"
     }]
   }
