@@ -74,6 +74,7 @@ class Lexer(Cursor):
         self,
         check: Callable[[str | None, str], bool],
         devance_b4_break: bool = False,
+        escape: bool = False,
         start_str: str = "",
     ) -> str:
         temp_str: str = start_str
@@ -85,6 +86,7 @@ class Lexer(Cursor):
                 break
             self.advance()
             temp_str += c
+        print(f"--> {temp_str}")
         return temp_str
 
     def lex(self) -> Token:
@@ -101,7 +103,21 @@ class Lexer(Cursor):
             return Token(TT.DOUBLE_COLON)
         elif c == '"':
             self.advance()
-            string = self.collect_until(lambda c, _: (c is None) or c == '"')
+            string = ""
+            while c := self.current():
+                if c is None or c == '"':
+                    break
+                elif c == "\\":
+                    self.advance()
+                    c = self.current()
+                    if c is None:
+                        break
+                    elif c == '"':
+                        string += '"'
+                        self.advance()
+                        continue
+                self.advance()
+                string += c
             return Token(TT.LITERAL, prim_ty=PrimitiveTypes.STR, val=string)
         elif c not in TT and (is_valid_ident(c) or c == "."):
             self.advance()
@@ -377,11 +393,6 @@ class Parser(Cursor):
                     if expr is not None and isinstance(expr, Reference):
                         sym_table.insert(c.val, expr)
                         result = Parameter()
-                # elif next.ty is TT.OPEN_PAREN:
-                #     self.advance()
-                #     paren = self.parse()
-                #     # raise Exception(f"Enum value(?): {c.val} -> {paren}")
-                #     result = DataVariantWithInnerValue(Identifier(c.val), paren)
                 else:
                     self.advance()
                     for_assignment = False
@@ -528,9 +539,6 @@ class Parser(Cursor):
                     possible_args: list[AstirExpr] = []
 
                     for k, ref in parameters.symbols.items():
-                        print(
-                            f"{bcolors.BOLD}{bcolors.OKGREEN}** Checking for argument {ref.name} with type: {ref.val}{bcolors.ENDC}"
-                        )
                         if ref.name == "ret":
                             continue
 

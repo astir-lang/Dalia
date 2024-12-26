@@ -25,7 +25,6 @@ class ASM(Cursor):
         self.lines: list[str] = [
             ".global _start",
             ".p2align 3",
-            'helloworld: .ascii  "Hello World!"',
         ]
         self.symbol_tables: dict[int, SymbolTable] = symbol_tables
         # All tables related to registers most likely
@@ -96,7 +95,7 @@ class ASM(Cursor):
                 )
                 # to_add.append(f"// {asm_function.next_usable_reg}")
                 to_add.extend(self.generate(c_expr.right.body))
-                to_add.append("ret")
+                #to_add.append("ret")
                 self.inside_fn = None
         elif isinstance(c_expr, ShuntingYardAlgorithmResults):
             inside_fn = self.current_fn()

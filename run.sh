@@ -1,1 +1,1 @@
-cd boot && ghc Main.hs -lm && ./main
+python3 boot.py && as -o boot.o boot.s && ld -macosx_version_min 13.0.0 -o boot boot.o -lSystem -syslibroot `xcrun -sdk macosx --show-sdk-path` -e _start -arch arm64 && ./boot

@@ -6,6 +6,7 @@ from ast_1 import Parser, Lexer  # type: ignore
 
 def run():
     file = open("boot.dal").read()
+    print(file)
     lexer = Lexer(file)
     lexer.lex_all()
     print(f"{lexer.results}\n\n")
