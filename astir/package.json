@@ -1,0 +1,25 @@
+{
+  "name": "astir",
+  "displayName": "astir",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "astir",
+      "aliases": ["Astir", "astir"],
+      "extensions": [".dal"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "astir",
+      "scopeName": "",
+      "path": "./syntaxes/astir.tmLanguage.json"
+    }]
+  }
+}

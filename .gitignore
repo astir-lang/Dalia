@@ -12,3 +12,4 @@ whatever.s
 *.o
 boot
 whatever
+.vscode
