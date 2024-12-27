@@ -1,10 +1,15 @@
-//d'IO :: ()
+t'Monad a {
+    [>>=]\ Monad a, (\a :: Monad b) :: Monad b
+    bind\Monad a, (\a :: Monad b) :: Monad b
+    return\ a :: Monad a
+}
 
 //d'CustomDataType :: Point int int
-
 //d'MultipleCustomDataTypes :: CustomDataType | PointWithZ int int int
-
 //take_int_and_add_2\ x int, y int :: int → x + y
 
-print_hello_world\ :: () → asm ["mov X0, #1", "adr X1, helloworld", "mov X2, #13", "mov X16, #4", "svc 0", "ret"]
-_start\ :: int → asm ["bl print_hello_world", "mov X0, #0", "mov X16, #1", "svc 0", "helloworld: .ascii  \"Hello World!\""]
+// print_hello_world\ :: IO () → asm ["mov X0, #1", "adr X1, helloworld", "mov X2, #13", "mov X16, #4", "svc 0", "ret"]
+// _start\ :: IO () → m'IO {
+//     asm ["bl print_hello_world", "mov X0, #0", "mov X16, #1", "svc 0", "helloworld: .ascii  \"Hello World!\""]
+//     asm ["helloworld: .ascii  \"Hello World!\""]
+// }

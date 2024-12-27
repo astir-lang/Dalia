@@ -37,6 +37,12 @@ class TT(Enum):
     OPEN_PAREN = "("
     CLOSE_PAREN = ")"
     OPEN_SQUARE = "["
+    UNDERSCORE = "_"
+    GREATER_THAN = ">"
+    LESS_THAN = ">"
+    CURLY_OPEN = "{"
+    CURLY_CLOSE = "}"
+    EQ = "="
     PIPE = "|"
     CLOSE_SQUARE = "]"
     IDENT = "IDENT"
@@ -44,6 +50,9 @@ class TT(Enum):
     COMMENT = "COMMENT"
     PRIME_FORM = "PRIME_FORM"
     DUMMY = "DUMMY"
+
+
+SYMBOLS = [TT.EQ, TT.LESS_THAN, TT.GREATER_THAN, TT.DASH, TT.FUNCTION_ARROW]
 
 operators = {
     "+": {

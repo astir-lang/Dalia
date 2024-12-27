@@ -1,5 +1,5 @@
 from abc import ABC
-from common import PrimitiveTypes, bcolors
+from common import TT, PrimitiveTypes, bcolors
 from typing import Any, Union, Callable
 
 
@@ -9,37 +9,22 @@ class AstirExpr(ABC):
         self.ty = ty
 
 
-# Algebraic Data Type
-class ADT(AstirExpr):
-    def __init__(self, ty, name: str, values: list[AstirExpr]):
-        super().__init__(ty)
-        self.name = name
-        self.values = values
-
-    def __repr__(self):
-        return (
-            f"AlgebraicDataType(NAME={self.name}, TY={self.ty}, VALUES={self.values})"
-        )
-
-
-class Dummy(AstirExpr):
-    def __init__(self):
+class Reference(AstirExpr):
+    def __init__(
+        self,
+        name: str,
+        belongs_to: int,
+        symbol_id: int,
+        copy_val: bool = False,
+    ) -> None:
         super().__init__(PrimitiveTypes.UNIT)
+        self.name = name
+        self.symbol_id = symbol_id
+        self.belongs_to = belongs_to
+        self.copy_val = copy_val
 
-
-def check_is_allowed(AstirExpr: AstirExpr | None) -> bool:
-    allowed = AstirExpr is not None or (
-        isinstance(AstirExpr, Parenthesized)
-        or isinstance(AstirExpr, Reference)
-        or isinstance(AstirExpr, Literal)
-    )
-    if (
-        AstirExpr is not None
-        and isinstance(AstirExpr, Identifier)
-        and AstirExpr.for_assignment
-    ):
-        allowed = False
-    return allowed
+    def __repr__(self) -> str:
+        return f"Ref(ST={self.belongs_to}, Ref={self.name}, ID={self.symbol_id})"
 
 
 class Symbol:
@@ -49,6 +34,9 @@ class Symbol:
         self.val = val
         self.belongs_to = belongs_to
         self.id = id
+
+    def as_ref(self) -> Reference:
+        return Reference(self.name, self.belongs_to, self.id, False)
 
     def __repr__(self) -> str:
         return (
@@ -89,10 +77,99 @@ class SymbolTable:
         return f"{self.symbols}"
 
 
+class Parameter(AstirExpr):
+    def __init__(self, name: str | None = None, val: AstirExpr | None = None, generic: bool = False):
+        super().__init__(PrimitiveTypes.UNIT)
+        self.name = name
+        self.val = val,
+        self.generic = generic
+
+    def __repr__(self) -> str:
+        return f"Parameter(Name={self.name}, Generic? {self.generic})"
+
+
+class TypeClass(AstirExpr):
+    def __init__(self, name: str, generics: list[AstirExpr], members: SymbolTable):
+        super().__init__(self)
+        self.members: SymbolTable = members
+        self.name: str = name
+        self.generics: list[AstirExpr] = generics
+
+
+class Type(AstirExpr):
+    def __init__(
+        self,
+        name: str,
+        belongs_to: int,
+        id: int,
+        operators: list[TT] | None = None,
+        generics: list[AstirExpr] = [],
+        instances_of: list[Reference] = [],
+    ):
+        super().__init__(self)
+        self.name = name
+        self.operators = operators
+        self.generics = generics
+        self.belongs_to = belongs_to
+        self.id = id
+
+
+class TypeInstance(AstirExpr):
+    def __init__(
+        self,
+        name: str,
+        ty_belongs_to: int,
+        type_id: int,
+        filled_in_generics: list[AstirExpr] = [],
+    ):
+        super().__init__(self)
+        self.name = name
+        self.ty_belongs_to = ty_belongs_to
+        self.type_id = type_id
+        self.filled_in_generics = filled_in_generics
+
+    def __repr__(self):
+        return f"TypeInstance(NAME={self.name}, FILLED_IN_GENERICS={self.filled_in_generics})"
+
+
+# Algebraic Data Type
+class ADT(AstirExpr):
+    def __init__(self, ty, name: str, values: list[AstirExpr]):
+        super().__init__(ty)
+        self.name = name
+        self.values = values
+
+    def __repr__(self):
+        return (
+            f"AlgebraicDataType(NAME={self.name}, TY={self.ty}, VALUES={self.values})"
+        )
+
+
+class Dummy(AstirExpr):
+    def __init__(self):
+        super().__init__(PrimitiveTypes.UNIT)
+
+
+def check_is_allowed(AstirExpr: AstirExpr | None) -> bool:
+    allowed = AstirExpr is not None or (
+        isinstance(AstirExpr, Parenthesized)
+        or isinstance(AstirExpr, Reference)
+        or isinstance(AstirExpr, Literal)
+    )
+    if (
+        AstirExpr is not None
+        and isinstance(AstirExpr, Identifier)
+        and AstirExpr.for_assignment
+    ):
+        allowed = False
+    return allowed
+
+
 class LambdaDefinition(AstirExpr):
     def __init__(
-        self, parameters: SymbolTable  # | list[PrimitiveTypes | AstirExpr]
-        , special_callable: Callable[[list[AstirExpr]], AstirExpr] | None = None
+        self,
+        parameters: SymbolTable,  # | list[PrimitiveTypes | AstirExpr]
+        special_callable: Callable[[list[AstirExpr]], AstirExpr] | None = None,
     ):  # TODO: accept symboltable or list[AstirExpr]
         super().__init__(self)
         # todo:
@@ -179,14 +256,6 @@ class AstirTuple(AstirExpr):
         return f"Tuple({self.values})"
 
 
-class Parameter(AstirExpr):
-    def __init__(self):
-        super().__init__(PrimitiveTypes.UNIT)
-
-    def __repr__(self) -> str:
-        return f"Parameter"
-
-
 class Assignment(AstirExpr):
     def __init__(self, left: AstirExpr, right: AstirExpr) -> None:
         super().__init__(PrimitiveTypes.UNIT)
@@ -195,24 +264,6 @@ class Assignment(AstirExpr):
 
     def __repr__(self) -> str:
         return f"Assignment ({self.left}) -> ({self.right})"
-
-
-class Reference(AstirExpr):
-    def __init__(
-        self,
-        name: str,
-        belongs_to: int,
-        symbol_id: int,
-        copy_val: bool = False,
-    ) -> None:
-        super().__init__(PrimitiveTypes.UNIT)
-        self.name = name
-        self.symbol_id = symbol_id
-        self.belongs_to = belongs_to
-        self.copy_val = copy_val
-
-    def __repr__(self) -> str:
-        return f"Ref(ST={self.belongs_to}, Ref={self.name}, ID={self.symbol_id})"
 
 
 class PrimitiveType(AstirExpr):

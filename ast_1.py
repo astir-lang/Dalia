@@ -2,7 +2,7 @@ from abc import ABC
 from ast import Expr
 from typing import Generic, Callable, TypeVar
 
-from common import TT, Cursor, PrimitiveTypes, bcolors, operators
+from common import SYMBOLS, TT, Cursor, PrimitiveTypes, bcolors, operators
 from ast_exprs import (
     ADT,
     AstirExpr,
@@ -22,6 +22,9 @@ from ast_exprs import (
     Lambda,
     Assignment,
     Application,
+    Type,
+    TypeClass,
+    TypeInstance,
     check_is_allowed,
 )
 
@@ -86,7 +89,6 @@ class Lexer(Cursor):
                 break
             self.advance()
             temp_str += c
-        print(f"--> {temp_str}")
         return temp_str
 
     def lex(self) -> Token:
@@ -121,9 +123,9 @@ class Lexer(Cursor):
             return Token(TT.LITERAL, prim_ty=PrimitiveTypes.STR, val=string)
         elif c not in TT and (is_valid_ident(c) or c == "."):
             self.advance()
-            if (next := self.current()) and next == "'" and c == "d":
+            if (next := self.current()) and next == "'" and c in ["t", "d", "m"]:
                 # self.advance()
-                return Token(TT.PRIME_FORM)
+                return Token(TT.PRIME_FORM, val=c)
 
             def identifier_check(c: str | None, rest: str) -> bool:
                 if (c is None) or (not is_valid_ident(c)) and c != ".":
@@ -216,10 +218,12 @@ class Parser(Cursor):
         global_symbols.insert("unit", PrimitiveType(PrimitiveTypes.UNIT))
         global_symbols.insert("str", PrimitiveType(PrimitiveTypes.STR))
         global_symbols.insert("float", PrimitiveType(PrimitiveTypes.FLOAT))
-
+        # global_symbols.insert(
+        #     "IO", Type("IO", 0, 4, None, generics=[Identifier("wrapped_val")])
+        # )
         inline_assembly_lambda_def_symbol_table: SymbolTable = SymbolTable(1)
         inline_assembly_lambda_def_symbol_table.insert(
-            "xs", PrimitiveType(PrimitiveTypes.LIST, size=1)
+            "xs", PrimitiveType(PrimitiveTypes.LIST, size=None)
         )
         inline_assembly_lambda_def_symbol_table.insert(
             "ret", PrimitiveType(PrimitiveTypes.UNIT)
@@ -263,6 +267,13 @@ class Parser(Cursor):
     def resolve_type(self, ty: Expr) -> None:
         pass
 
+    def expect(self, ty: TT, advance: bool = True):
+        cur = self.current()
+        if cur is None or not cur.ty == ty:
+            raise Exception(f"Expected {ty}, instead for {cur}")
+        elif advance:
+            self.advance()
+
     def advance(self) -> None:
         self.current_number_of_advances += 1
         return super().advance()
@@ -300,73 +311,134 @@ class Parser(Cursor):
             return None
         elif c.ty == TT.OPEN_SQUARE:
             self.advance()
-            collected: list[AstirExpr] = []
-            while True:
-                current = self.current()
-                if current is None or current.ty == TT.CLOSE_SQUARE:
-                    self.advance()
-                    break
-                elif current.ty == TT.COMMA:
-                    self.advance()
-                    continue
-                parsed = self.parse()
-                if parsed is None:
-                    self.at -= 1
-                    break
-                collected.append(parsed)
-            result = Literal(
-                PrimitiveType(PrimitiveTypes.LIST, size=len(collected)), collected
-            )
-        elif c.ty == TT.PRIME_FORM:
-            self.advance()
-            if (next := self.current()) and not next.ty == TT.IDENT:
-                raise Exception("Expected an identifier after prime form")
-            name = self.parse()
-            if not isinstance(name, Identifier):
-                raise Exception(f"Expected identifier for the name {name} [{tag}]")
-
-            if (next := self.current()) and not next.ty == TT.DOUBLE_COLON:
-                raise Exception(
-                    f"Expected double colon after the prime form...got {next}"
-                )
-            self.advance()
-            parsing: list[AstirExpr] = []
-            while True:
-                current = self.current()
-                if current is None:
-                    break
-                elif current.ty == TT.PIPE:
-                    # parsing = []
-                    self.advance()
-                    continue
-                elif current.ty == TT.PRIME_FORM:
-                    break
-
-                parsed = self.parse("23")
-                if (
-                    parsed is None
-                    or not isinstance(parsed, Literal)
-                    and not isinstance(parsed, Reference)
-                    and not isinstance(parsed, PrimitiveType)
-                    and (
-                        not isinstance(parsed, Identifier)
-                        or (
-                            isinstance(parsed, Identifier)
-                            and parsed.for_assignment == True
-                        )
-                    )
+            if (next := self.current()) and next is not None and next.ty in SYMBOLS:
+                collected_custom_op = [next]
+                custom_op: str = TT(next.ty).value
+                self.advance()
+                while (
+                    (next := self.current())
+                    and next is not None
+                    and (next.ty in SYMBOLS or next.ty == TT.CLOSE_SQUARE)
                 ):
-                    self.at -= 1
-                    break
-                parsing.append(parsed)
-            symbol_table = self.symbol_tables[self.using_st]
-            new_symbol = symbol_table.insert(name.value, Dummy())
-            result = ADT(
-                Reference(name.value, symbol_table.id, new_symbol.id, False),
-                name.value,
-                parsing,
-            )
-            self.tag += 1
+                    if next.ty == TT.CLOSE_SQUARE:
+                        self.advance()
+                        break
+                    collected_custom_op.append(next)
+                    custom_op += TT(next.ty).value
+                    self.advance()
+                result = Identifier(custom_op)
+            else:
+                collected: list[AstirExpr] = []
+                while True:
+                    current = self.current()
+                    if current is None or current.ty == TT.CLOSE_SQUARE:
+                        self.advance()
+                        break
+                    elif current.ty == TT.COMMA:
+                        self.advance()
+                        continue
+                    parsed = self.parse()
+                    if parsed is None:
+                        self.at -= 1
+                        break
+                    collected.append(parsed)
+                result = Literal(
+                    PrimitiveType(PrimitiveTypes.LIST, size=len(collected)), collected
+                )
+        elif c.ty == TT.PRIME_FORM:
+            if c.val == "d":
+                self.advance()
+                if (next := self.current()) and not next.ty == TT.IDENT:
+                    raise Exception("Expected an identifier after prime form")
+                name = self.parse()
+                if not isinstance(name, Identifier):
+                    raise Exception(f"Expected identifier for the name {name} [{tag}]")
+
+                if (next := self.current()) and not next.ty == TT.DOUBLE_COLON:
+                    raise Exception(
+                        f"Expected double colon after the prime form...got {next}"
+                    )
+                self.advance()
+                parsing: list[AstirExpr] = []
+                while True:
+                    current = self.current()
+                    if current is None:
+                        break
+                    elif current.ty == TT.PIPE:
+                        # parsing = []
+                        self.advance()
+                        continue
+                    elif current.ty == TT.PRIME_FORM:
+                        break
+
+                    parsed = self.parse("23")
+                    if (
+                        parsed is None
+                        or not isinstance(parsed, Literal)
+                        and not isinstance(parsed, Reference)
+                        and not isinstance(parsed, PrimitiveType)
+                        and (
+                            not isinstance(parsed, Identifier)
+                            or (
+                                isinstance(parsed, Identifier)
+                                and parsed.for_assignment == True
+                            )
+                        )
+                    ):
+                        self.at -= 1
+                        break
+                    parsing.append(parsed)
+                symbol_table = self.symbol_tables[self.using_st]
+                new_symbol = symbol_table.insert(name.value, Dummy())
+                result = ADT(
+                    Reference(name.value, symbol_table.id, new_symbol.id, False),
+                    name.value,
+                    parsing,
+                )
+                self.tag += 1
+            elif c.val == "t":
+                self.advance()
+                type_class_name = self.parse()
+                if not isinstance(type_class_name, Identifier):
+                    raise Exception("Expected an identifier after the type class.")
+
+                previous_symbol_table_id = self.using_st
+                symbol_table_id = list(self.symbol_tables.items())[-1][0] + 1
+                type_class_symbol_table = SymbolTable(
+                    symbol_table_id, previous_symbol_table_id
+                )
+                self.symbol_tables[symbol_table_id] = type_class_symbol_table
+                self.using_st = symbol_table_id
+                type_class_symbol_table = self.symbol_tables[symbol_table_id]
+                generic_list: list[AstirExpr] = []
+                while (next := self.current()) and next.ty != TT.CURLY_OPEN:
+                    generic = self.parse()
+                    if not isinstance(generic, Identifier):
+                        raise Exception("Expected identifier")
+
+                    type_class_symbol_table.insert(
+                        generic.value, Parameter(name=generic.value, generic=True)
+                    )
+                    generic_list.append(generic)
+
+                type_class_symbol_table.insert(
+                    type_class_name.value,
+                    TypeClass(type_class_name.value, generic_list, SymbolTable(10000)),
+                )
+                type_class_symbol_table.usable_id += 1
+                print(
+                    f"Type class {type_class_name} with generic fields {self.symbol_tables[symbol_table_id]} (last:{self.current()})"
+                )
+                self.expect(TT.CURLY_OPEN)
+                items = []
+                while (next := self.current()) and next.ty != TT.CURLY_CLOSE:
+                    # TODO setup ST or smth so that the inside knows what generics/names it can/cannot use
+                    parsed = self.parse("GG")
+                    items.append(parsed)
+                print(
+                    f"Type class {type_class_name} (c=>{self.current()})\n\tItems: {items}"
+                )
+                result = Dummy()
         elif c.ty == TT.LITERAL:
             if c.prim_ty is None or c.val is None:
                 raise Exception("Invalid primitive type...how?")
@@ -378,7 +450,26 @@ class Parser(Cursor):
             symbol = self.lookup(c.val)
             if symbol is not None:
                 self.advance()
-                result = Reference(c.val, symbol.belongs_to, symbol.id)
+                if isinstance(symbol.val, TypeClass) or isinstance(symbol.val, Type):
+                    expected_types = symbol.val.generics
+                    filled_in_generics: list[AstirExpr] = []
+                    while len(filled_in_generics) != len(expected_types):
+                        c = self.current()
+                        if c is None:
+                            break
+                        parsed = self.parse()
+                        if parsed is None:
+                            raise Exception(f"Failed to parse value: {c}")
+                        filled_in_generics.append(parsed)
+
+                    result = TypeInstance(
+                        symbol.name,
+                        symbol.belongs_to,
+                        symbol.id,
+                        filled_in_generics=filled_in_generics,
+                    )
+                else:
+                    result = symbol.as_ref()
             else:
                 next = self.input[self.at + 1]
                 if (
@@ -388,11 +479,11 @@ class Parser(Cursor):
                     and self.using_st in self.symbol_tables
                 ):
                     self.advance()
-                    sym_table = self.symbol_tables[self.using_st]
+                    # sym_table = self.symbol_tables[self.using_st]
                     expr = self.parse()
                     if expr is not None and isinstance(expr, Reference):
-                        sym_table.insert(c.val, expr)
-                        result = Parameter()
+                        # sym_table.insert(c.val, expr)
+                        result = Parameter(c.val, val=expr)
                 else:
                     self.advance()
                     for_assignment = False
@@ -420,12 +511,13 @@ class Parser(Cursor):
                         self.advance()
                         has_comma = True
                         continue
-
-                expr = self.parse()
-                if expr is None:
-                    self.at -= 1
-                    break
-                the_between.append(expr)
+                    else:
+                        expr = self.parse()
+                        if expr is None:
+                            self.at -= 1
+                            break
+                        the_between.append(expr)
+            print(f"({self.current()} AFTER {the_between}")
             if len(the_between) == 0:
                 # We init Parenthesized with no expression so
                 # that it is treated as an empty tuple, non value
@@ -434,9 +526,7 @@ class Parser(Cursor):
             elif len(the_between) == 1:
                 # Init Parenthesized with an expression (the_between[0])
                 # to do exactly what it says... for example (\ :: int ...)
-                result = Parenthesized(
-                    PrimitiveType(PrimitiveTypes.UNIT), the_between[0]
-                )
+                result = Parenthesized(the_between[0].ty, the_between[0])
             elif len(the_between) > 1 and has_comma:
                 # Handle tuples
                 result = AstirTuple(the_between)
@@ -451,10 +541,9 @@ class Parser(Cursor):
             self.advance()
             previous_symbol_table_id = self.using_st
             symbol_table_id = list(self.symbol_tables.items())[-1][0] + 1
-            lambda_symbol_table = SymbolTable(symbol_table_id, 0)
+            lambda_symbol_table = SymbolTable(symbol_table_id, previous_symbol_table_id)
             self.symbol_tables[symbol_table_id] = lambda_symbol_table
             self.using_st = symbol_table_id
-            self.parsing_lambda_parameters = True
             while True:
                 c = self.current()
                 if c is not None:
@@ -463,45 +552,61 @@ class Parser(Cursor):
                         continue
                     elif c.ty == TT.DOUBLE_COLON:
                         self.advance()
+                        print(f"{self.current()}")
                         ret_type = self.parse()
                         if ret_type is None:
                             raise Exception(
                                 f"Return type was not there or non identifier ({ret_type})"
                             )
-                        lambda_symbol_table.insert("ret", ret_type)
-                        self.symbol_tables[symbol_table_id] = lambda_symbol_table
-                        c = self.current()
-                        if c is None or c.ty is not TT.FUNCTION_ARROW:
-                            raise Exception(
-                                f"Expected f.n. arrow after ret type... ({c})"
-                            )
-                        self.advance()
+                        self.symbol_tables[symbol_table_id].insert("ret", ret_type)
                         break
-                expr = self.parse()
-                if expr is None or not isinstance(expr, Parameter):
-                    self.at -= 1
-                    break
-            body = self.parse()
-            if body is None:
-                raise Exception(f"Lambda must have body {self.current()}")
-            popped = self.results.pop()
-            if not isinstance(popped, Identifier):
-                return popped
-            symbol_table = self.symbol_tables[previous_symbol_table_id]
-            _lambda = Lambda(
-                lambda_symbol_table,
-                body,
-                previous_symbol_table_id,
-                symbol_table.usable_id,
-            )
-            symbol_table.insert(popped.value, _lambda)
-            result = Assignment(
-                popped,
-                _lambda,
-            )
+                    # self.advance()
+                expr = self.parse("32")
+                if (
+                    isinstance(expr, Parameter)
+                    and expr.name is not None
+                    and isinstance(expr.val, AstirExpr)
+                ):
+                    self.symbol_tables[symbol_table_id].insert(expr.name, expr.val)
+                elif isinstance(expr, TypeInstance) or isinstance(expr, Reference):
+                    self.symbol_tables[symbol_table_id].insert(
+                        f"{expr.name}{self.symbol_tables[symbol_table_id].usable_id}",
+                        expr,
+                    )
+                elif isinstance(expr, Parenthesized) and isinstance(
+                    expr.inner, LambdaDefinition
+                ):
+                    self.symbol_tables[symbol_table_id].insert(
+                        f"lambda_def{self.symbol_tables[symbol_table_id].usable_id}",
+                        expr,
+                    )
+                else:
+                    raise Exception(f"Unexpected parameter passed to fn... => {expr}")
+            # body = self.parse()
+            # if body is None:
+            #     raise Exception(f"Lambda must have body {self.current()}")
+
+            result = LambdaDefinition(self.symbol_tables[symbol_table_id])
+            # popped = self.results.pop()
+            # if not isinstance(popped, Identifier):
+            #     return popped
+            # symbol_table = self.symbol_tables[previous_symbol_table_id]
+            # _lambda = Lambda(
+            #     lambda_symbol_table,
+            #     body,
+            #     previous_symbol_table_id,
+            #     symbol_table.usable_id,
+            # )
+            # symbol_table.insert(popped.value, _lambda)
+            # result = Assignment(
+            #     popped,
+            #     _lambda,
+            # )
 
         if result is None:
-            raise Exception(f"(at:{self.at}) Failed to parse ANYTHING => {c}")
+            raise Exception(
+                f"[TAG:{tag}] (at:{self.at}) Failed to parse ANYTHING => {c}"
+            )
         # At this point, past previous parsing, we should have advanced past
         # the last token and now be face-to-face with the rare, elusive, OP!
         c = self.current()
