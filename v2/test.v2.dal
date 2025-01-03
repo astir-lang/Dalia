@@ -1,0 +1,18 @@
+// d'List a :: Nil | Cons a (List a)
+d'DummyExpr :: Identifier Str | ExprWithAnotherInside Str DummyExpr | StrLiteral Str
+
+lambda_that_returns_dummy_identifier\ :: DummyExpr → Identifier "hello_world"
+lambda_that_returns_expr_with_another_expression\ :: DummyExpr → ExprWithAnotherInside "hello_world" StrLiteral "Hello, World!"
+// Examples of lambda that takes a custom data type and pattern matches over it.
+// To pattern match we define a lambda definition, then fill in the body definitions
+// with pattern matched parameters
+lambda_that_pattern_matches\DummyExpr :: ()
+lambda_that_pattern_matches\Identifier inside_str → ()
+lambda_that_pattern_matches\ExprWithAnotherInside name inside_expr → ()
+lambda_that_pattern_matches\StrLiteral literal_str → ()
+
+// This adds two numbers, x and y, and returns the product x and y
+lambda_definition_alone\int, int :: int
+
+lambda_definition_with_body_all_in_one\x int, y int :: int → x + y
+lambda_definition_alone\x, y → x + y
